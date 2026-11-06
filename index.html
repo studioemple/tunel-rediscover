@@ -168,10 +168,10 @@ const NS='http://www.w3.org/2000/svg';
 const el=(tag,attrs={},parent)=>{ const e=document.createElementNS(NS,tag); for(const k in attrs) e.setAttribute(k,attrs[k]); if(parent) parent.appendChild(e); return e; };
 
 // ---------- settings (only these are editable)
-const FLOOR_DEFAULT={on:true,y0:2014,y1:2026,sw:70,sd:25,dw:8,pad:30,start:2.5,end:1.8,corner:1.0,ext:true};
+const FLOOR_DEFAULT={on:true,y0:2014,y1:2026,sw:70,sd:25,dw:8,pad:30,start:2.5,end:1.8,corner:1.0,ext:true,pos:[2.70,5.10,7.50,9.90,12.30,14.70,17.10,19.515,21.93,24.33,26.73,29.13,31.485]};
 let S={w:100,h:180,view:'panels',floor:{...FLOOR_DEFAULT}};
-try{ const s=JSON.parse(localStorage.getItem('rediscover-tunel-final-v3')||'null'); if(s){ S={...S,...s,floor:{...FLOOR_DEFAULT,...(s.floor||{})}}; } }catch(e){}
-const save=()=>{ try{ localStorage.setItem('rediscover-tunel-final-v3',JSON.stringify(S)); }catch(e){} };
+try{ const s=JSON.parse(localStorage.getItem('rediscover-tunel-final-v4')||'null'); if(s){ S={...S,...s,floor:{...FLOOR_DEFAULT,...(s.floor||{})}}; } }catch(e){}
+const save=()=>{ try{ localStorage.setItem('rediscover-tunel-final-v4',JSON.stringify(S)); }catch(e){} };
 
 // ---------- floor stickers along the centre line
 const FLOORPATH=[[1.07,14.19],[1.07,13.02],[6.34,13.02],[6.34,1.30],[3.60,1.30],[3.60,10.56],[0,10.56]];
@@ -181,7 +181,8 @@ function floorLayout(){
   const T=acc, verts=segs.slice(1).map(g=>g.acc);
   const at=s=>{ s=Math.max(0,Math.min(T,s)); const g=segs.find(g=>s<=g.acc+g.L+1e-9)||segs.at(-1); return {p:add(g.a,mul(g.e,s-g.acc)),e:g.e}; };
   const n=Math.max(0,F.y1-F.y0+1), sd=F.sd/100, pad=F.pad/100, a=F.start, b=T-F.end, years=[], lines=[];
-  for(let i=0;i<n;i++){ let s=n===1?(a+b)/2:a+i*(b-a)/(n-1); for(const v of verts) if(Math.abs(s-v)<F.corner) s=v+(s>=v?1:-1)*F.corner; years.push({year:F.y0+i,s}); }
+  const fixed=Array.isArray(F.pos)&&F.pos.length===n;
+  for(let i=0;i<n;i++){ if(fixed){ years.push({year:F.y0+i,s:F.pos[i]}); continue; } let s=n===1?(a+b)/2:a+i*(b-a)/(n-1); for(const v of verts) if(Math.abs(s-v)<F.corner) s=v+(s>=v?1:-1)*F.corner; years.push({year:F.y0+i,s}); }
   years.sort((x,y)=>x.s-y.s);
   const fill=(u,v)=>{ if(v-u<0.05) return; const cuts=[u,...verts.filter(x=>x>u&&x<v),v]; for(let i=0;i<cuts.length-1;i++) lines.push({s0:cuts[i],s1:cuts[i+1]}); };
   if(F.ext&&n) fill(0.3,years[0].s-sd/2-pad);
