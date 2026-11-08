@@ -49,9 +49,25 @@ details>summary::-webkit-details-marker{display:none}
 details>summary::after{content:'+';font-size:16px;letter-spacing:0}
 details[open]>summary::after{content:'–'}
 .dimnote{font-size:13px;color:var(--muted);max-width:820px;text-align:center;margin:0}
-#plan{width:100%;max-width:820px;height:calc(100vh - 150px);min-height:560px;touch-action:manipulation}
+#plan{width:100%;max-width:820px;height:calc(100vh - 200px);min-height:560px;touch-action:manipulation}
 svg text{font-family:var(--cond)}
 .pnl{cursor:pointer}
+.edit .pnl{cursor:grab;touch-action:none}
+.edit .pnl.drag{cursor:grabbing}
+.edit .pnl.drag polygon{filter:drop-shadow(0 0 .06px #fff)}
+.tools{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;align-items:center}
+.tbtn{border:1px solid var(--line);background:var(--surface);color:var(--ink,#EAF2F8);border-radius:999px;padding:7px 14px;font:inherit;font-size:14px;font-weight:600;cursor:pointer;min-height:36px;display:inline-flex;gap:7px;align-items:center}
+.tbtn:hover{border-color:#59C8E7}
+.tbtn.on{background:#A8CE3A;border-color:#A8CE3A;color:#0F3152}
+.tbtn.ghost{font-weight:500;color:var(--muted)}
+.tbtn[hidden]{display:none}
+.hint{flex-basis:100%;text-align:center;font-size:12.5px;color:var(--muted);margin:0}
+.hint[hidden]{display:none}
+.hint i{display:inline-block;width:14px;height:4px;border-radius:2px;background:#59C8E7;vertical-align:middle;margin:0 3px 0 0}
+#dragtip{position:fixed;z-index:11;pointer-events:none;background:#0F3152;border:1px solid #A8CE3A;color:#EAF2F8;border-radius:10px;padding:7px 10px;font-size:13px;line-height:1.35;box-shadow:0 10px 30px rgba(0,0,0,.4);opacity:0;transition:opacity .12s;white-space:nowrap}
+#dragtip.on{opacity:1}
+#dragtip b{color:#A8CE3A}
+#dragtip span{color:#93AECA}
 .pnl:focus{outline:none}
 .pnl:focus-visible circle{stroke:#fff;stroke-width:.05}
 #pop.sheet{left:50%!important;top:auto!important;bottom:12px;transform:translateX(-50%);width:min(340px,calc(100vw - 24px));pointer-events:auto;display:grid;grid-template-columns:42% 1fr;align-items:end}
@@ -79,7 +95,7 @@ svg text{font-family:var(--cond)}
 <body>
 <header>
   <h1>Rediscover tunel · finalni raspored panela</h1>
-  <p>20 panela. Prijeđite mišem ili dodirnite panel za pregled.</p>
+  <p>20 panela. Prijeđite mišem ili dodirnite panel za pregled. Otključajte raspored i povucite panel duž zida.</p>
 </header>
 <div class="app">
 <aside>
@@ -116,8 +132,15 @@ svg text{font-family:var(--cond)}
     <button type="button" id="vPanels" aria-pressed="true">Paneli i naljepnice</button>
     <button type="button" id="vDims" aria-pressed="false">Dimenzije tunela</button>
   </div>
+  <div class="tools" id="tools">
+    <button type="button" class="tbtn" id="editBtn" aria-pressed="false"></button>
+    <button type="button" class="tbtn ghost" id="copyBtn" hidden>Kopiraj raspored</button>
+    <button type="button" class="tbtn ghost" id="resetBtn" hidden>Vrati izvorni raspored</button>
+    <p class="hint" id="hint" hidden>Povuci panel duž zida, može i na drugi zid. Tipkovnica: strelice 1 cm, Shift + strelica 10 cm. <i></i>pomaknut panel</p>
+  </div>
   <svg id="plan" viewBox="-1.0 -0.4 9.6 15.6" aria-label="Tlocrt tunela s 20 panela"></svg></div>
 </div>
+<div id="dragtip" aria-hidden="true"></div>
 <div id="pop" aria-hidden="true"><img alt=""><div><b></b><br><span></span></div></div>
 
 <script>
@@ -169,8 +192,8 @@ const el=(tag,attrs={},parent)=>{ const e=document.createElementNS(NS,tag); for(
 
 // ---------- settings (only these are editable)
 const FLOOR_DEFAULT={on:true,y0:2014,y1:2026,sw:70,sd:25,dw:8,pad:30,start:2.5,end:1.8,corner:1.0,ext:true,pos:[2.70,5.10,7.50,9.90,12.30,14.70,17.10,19.515,21.93,24.33,26.73,29.13,31.485]};
-let S={w:100,h:180,view:'panels',floor:{...FLOOR_DEFAULT}};
-try{ const s=JSON.parse(localStorage.getItem('rediscover-tunel-final-v4')||'null'); if(s){ S={...S,...s,floor:{...FLOOR_DEFAULT,...(s.floor||{})}}; } }catch(e){}
+let S={w:100,h:180,view:'panels',floor:{...FLOOR_DEFAULT},pos:{},edit:false};
+try{ const s=JSON.parse(localStorage.getItem('rediscover-tunel-final-v4')||'null'); if(s){ S={...S,...s,floor:{...FLOOR_DEFAULT,...(s.floor||{})},pos:s.pos||{}}; } }catch(e){}
 const save=()=>{ try{ localStorage.setItem('rediscover-tunel-final-v4',JSON.stringify(S)); }catch(e){} };
 
 // ---------- floor stickers along the centre line
@@ -214,23 +237,9 @@ function draw(){
   lab(1.07,15.08,'ULAZ ↑'); lab(-0.55,10.1,'← IZLAZ');
   if(dims) drawDims();
   // panels
-  const clash=new Set();
-  PANELS.forEach(p=>PANELS.forEach(q=>{ if(p!==q&&p.face===q.face&&Math.abs(p.t-q.t)<W-1e-6) clash.add(p.n); }));
-  if(!dims) PANELS.forEach(p=>{
-    const f=FACES[p.face], c=add(f.a,mul(f.e,p.t)), h=W/2, col=clash.has(p.n)?'#FF6B6B':'#A8CE3A';
-    const A=add(add(c,mul(f.e,-h)),mul(f.n,0.06)), B=add(add(c,mul(f.e,h)),mul(f.n,0.06));
-    const g=el('g',{class:'pnl',tabindex:'0',role:'button','aria-label':`Panel ${p.n}, ${p.year}: ${p.title}`},plan);
-    el('polygon',{points:[A,B,add(B,mul(f.n,0.09)),add(A,mul(f.n,0.09))].map(q=>q.join(',')).join(' '),fill:col},g);
-    const lp=add(c,mul(f.n,0.42));
-    el('circle',{cx:lp[0],cy:lp[1],r:0.2,fill:'#0F3152',stroke:col,'stroke-width':'0.025'},g);
-    const t=el('text',{x:lp[0],y:lp[1]+0.075,'text-anchor':'middle','font-size':'0.21','font-weight':'600',fill:'#EAF2F8'},g); t.textContent=p.n;
-    // generous invisible hit area
-    el('circle',{cx:lp[0],cy:lp[1],r:0.42,fill:'transparent'},g);
-    g.addEventListener('pointerenter',ev=>{ if(ev.pointerType==='mouse') show(p,ev); });
-    g.addEventListener('pointermove',ev=>{ if(ev.pointerType==='mouse'&&!pop.classList.contains('sheet')) place(ev.clientX,ev.clientY); });
-    g.addEventListener('pointerleave',ev=>{ if(ev.pointerType==='mouse') hide(); });
-    g.addEventListener('click',ev=>{ ev.stopPropagation(); if(ev.pointerType!=='mouse'){ pop.classList.add('sheet'); show(p,ev); } }); g.addEventListener('focus',()=>{ const r=g.getBoundingClientRect(); show(p,{clientX:r.right,clientY:r.top}); }); g.addEventListener('blur',hide);
-  });
+  const clash=clashes();
+  panelLayer=el('g',{id:'panels'},plan);
+  if(!dims) drawPanels();
   // scale bar
   const sb=el('g',{stroke:'#93AECA','stroke-width':'0.03'},plan); el('line',{x1:5.6,y1:14.85,x2:7.6,y2:14.85},sb); [5.6,6.6,7.6].forEach(x=>el('line',{x1:x,y1:14.77,x2:x,y2:14.93},sb));
   const st=el('text',{x:6.6,y:14.7,'text-anchor':'middle','font-size':'0.2',fill:'#93AECA'},plan); st.textContent='2 m';
@@ -272,7 +281,83 @@ function hide(){ pop.classList.remove('on'); }
 document.addEventListener('click',()=>{ if(pop.classList.contains('sheet')){ hide(); setTimeout(()=>pop.classList.remove('sheet'),150); } });
 function place(x,y){ if(pop.classList.contains('sheet')) return; const w=pop.offsetWidth, h=pop.offsetHeight||520, m=16; let L=x+m, T=y-h/2; if(L+w>innerWidth-8) L=x-w-m; T=Math.max(8,Math.min(innerHeight-h-8,T)); pop.style.left=L+'px'; pop.style.top=T+'px'; }
 
+// ---------- panels (draggable along walls)
+let panelLayer=null, dragging=null;
+const PP=p=>S.pos[p.n]||{face:p.face,t:p.t};
+function clashes(){ const W=S.w/100, c=new Set(); PANELS.forEach(p=>PANELS.forEach(q=>{ const a=PP(p), b=PP(q); if(p!==q&&a.face===b.face&&Math.abs(a.t-b.t)<W-1e-6) c.add(p.n); })); return c; }
+function drawPanels(){
+  panelLayer.innerHTML='';
+  const W=S.w/100, clash=clashes();
+  PANELS.forEach(p=>{
+    const P=PP(p), f=FACES[P.face], c=add(f.a,mul(f.e,P.t)), h=W/2, col=clash.has(p.n)?'#FF6B6B':(S.pos[p.n]?'#59C8E7':'#A8CE3A');
+    const A=add(add(c,mul(f.e,-h)),mul(f.n,0.06)), B=add(add(c,mul(f.e,h)),mul(f.n,0.06));
+    const g=el('g',{class:'pnl'+(dragging&&dragging.p===p?' drag':''),tabindex:'0',role:'button','aria-label':`Panel ${p.n}, ${p.year}: ${p.title}`},panelLayer);
+    el('polygon',{points:[A,B,add(B,mul(f.n,0.09)),add(A,mul(f.n,0.09))].map(q=>q.join(',')).join(' '),fill:col},g);
+    const lp=add(c,mul(f.n,0.42));
+    el('circle',{cx:lp[0],cy:lp[1],r:0.2,fill:'#0F3152',stroke:col,'stroke-width':'0.025'},g);
+    const t=el('text',{x:lp[0],y:lp[1]+0.075,'text-anchor':'middle','font-size':'0.21','font-weight':'600',fill:'#EAF2F8'},g); t.textContent=p.n;
+    el('circle',{cx:lp[0],cy:lp[1],r:0.42,fill:'transparent'},g);
+    // hit area along the panel itself
+    el('polygon',{points:[add(A,mul(f.n,-0.1)),add(B,mul(f.n,-0.1)),add(B,mul(f.n,0.3)),add(A,mul(f.n,0.3))].map(q=>q.join(',')).join(' '),fill:'transparent'},g);
+    g.addEventListener('pointerenter',ev=>{ if(ev.pointerType==='mouse'&&!dragging) show(p,ev); });
+    g.addEventListener('pointermove',ev=>{ if(ev.pointerType==='mouse'&&!dragging&&!pop.classList.contains('sheet')) place(ev.clientX,ev.clientY); });
+    g.addEventListener('pointerleave',ev=>{ if(ev.pointerType==='mouse'&&!dragging) hide(); });
+    g.addEventListener('pointerdown',ev=>startDrag(p,ev));
+    g.addEventListener('click',ev=>{ ev.stopPropagation(); if(S.edit) return; if(ev.pointerType!=='mouse'){ pop.classList.add('sheet'); show(p,ev); } });
+    g.addEventListener('focus',()=>{ if(dragging) return; const r=g.getBoundingClientRect(); show(p,{clientX:r.right,clientY:r.top}); }); g.addEventListener('blur',hide);
+    g.addEventListener('keydown',ev=>{ if(!S.edit) return; const k={ArrowLeft:-1,ArrowUp:-1,ArrowRight:1,ArrowDown:1}[ev.key]; if(!k) return; ev.preventDefault();
+      const P0=PP(p), F=FACES[P0.face], step=ev.shiftKey?0.10:0.01; S.pos[p.n]={face:P0.face,t:clampT(F,P0.t+k*step)}; save(); drawPanels(); sidebar(clashes()); panelLayer.querySelectorAll('.pnl')[PANELS.indexOf(p)].focus(); });
+  });
+}
+const clampT=(f,t)=>{ const h=S.w/200; return Math.max(h,Math.min(f.L-h,t)); };
+function svgPt(ev){ const pt=plan.createSVGPoint(); pt.x=ev.clientX; pt.y=ev.clientY; const q=pt.matrixTransform(plan.getScreenCTM().inverse()); return [q.x,q.y]; }
+function nearestFace(q,cur){
+  let best=null;
+  for(const k in FACES){ const f=FACES[k], v=sub(q,f.a), t=v[0]*f.e[0]+v[1]*f.e[1], d=v[0]*f.n[0]+v[1]*f.n[1];
+    if(t<-0.3||t>f.L+0.3||d<-0.08||d>1.6) continue;
+    const score=d+(k===cur?-0.25:0);   // malo "ljepila" za trenutni zid
+    if(!best||score<best.score) best={k,t,d,score}; }
+  return best;
+}
+function startDrag(p,ev){
+  if(!S.edit||S.view==='dims'||ev.button>0) return;
+  ev.preventDefault(); hide();
+  const q=svgPt(ev), P0=PP(p), f=FACES[P0.face], v=sub(q,f.a);
+  dragging={p,face:P0.face,off:P0.t-(v[0]*f.e[0]+v[1]*f.e[1]),id:ev.pointerId,x:ev.clientX,y:ev.clientY,raf:0};
+  plan.setPointerCapture(ev.pointerId); plan.classList.add('dragging'); moveDrag(ev);
+}
+function moveDrag(ev){
+  if(!dragging||ev.pointerId!==dragging.id) return;
+  dragging.x=ev.clientX; dragging.y=ev.clientY;
+  if(dragging.raf) return;
+  dragging.raf=requestAnimationFrame(()=>{ if(!dragging) return; dragging.raf=0;
+    const q=svgPt({clientX:dragging.x,clientY:dragging.y}), nf=nearestFace(q,dragging.face);
+    if(nf){ if(nf.k!==dragging.face){ dragging.face=nf.k; dragging.off=0; }
+      const f=FACES[nf.k]; let t=clampT(f,nf.t+dragging.off); t=Math.round(t*100)/100;
+      S.pos[dragging.p.n]={face:nf.k,t}; drawPanels(); tip(dragging.p); }
+  });
+}
+function endDrag(ev){ if(!dragging||ev.pointerId!==dragging.id) return; cancelAnimationFrame(dragging.raf);
+  try{ plan.releasePointerCapture(ev.pointerId); }catch(e){} const p=dragging.p; dragging=null; plan.classList.remove('dragging');
+  const P=PP(p); if(Math.abs(P.t-p.t)<0.005&&P.face===p.face) delete S.pos[p.n];
+  $('dragtip').classList.remove('on'); save(); drawPanels(); sidebar(clashes()); }
+plan.addEventListener('pointermove',moveDrag); plan.addEventListener('pointerup',endDrag); plan.addEventListener('pointercancel',endDrag);
+function tip(p){
+  const P=PP(p), f=FACES[P.face], W=S.w/100;
+  const same=PANELS.filter(q=>q!==p&&PP(q).face===P.face).map(q=>({n:q.n,t:PP(q).t})).sort((a,b)=>a.t-b.t);
+  const before=same.filter(q=>q.t<=P.t).pop(), after=same.find(q=>q.t>P.t);
+  const gl=before?P.t-before.t-W:P.t-W/2, gr=after?after.t-P.t-W:f.L-P.t-W/2;
+  const cm=x=>`${Math.round(x*100)} cm`, part=(x,q,endTxt)=>x<0?`<b style="color:#FF6B6B">preklop s ${q.n}: ${cm(-x)}</b>`:`${cm(x)} ${q?`do panela ${q.n}`:endTxt}`;
+  const d=$('dragtip'); d.innerHTML=`<b>${p.n}</b> · ${f.name}<br>sredina ${fmt(P.t)} m od početka zida<br><span>${part(gl,before,'do početka zida')} · ${part(gr,after,'do kraja zida')}</span>`;
+  d.style.left=Math.min(innerWidth-d.offsetWidth-8,dragging.x+18)+'px'; d.style.top=Math.max(8,dragging.y-d.offsetHeight-14)+'px'; d.classList.add('on');
+}
+function setEdit(on){ S.edit=on; const b=$('editBtn'); b.classList.toggle('on',on); b.setAttribute('aria-pressed',on);
+  b.innerHTML=on?'🔓 Pomicanje uključeno · Zaključaj':'🔒 Raspored zaključan · Otključaj';
+  $('copyBtn').hidden=!on; $('hint').hidden=!on; $('resetBtn').hidden=!on||!Object.keys(S.pos).length; document.body.classList.toggle('edit',on); save(); }
+function layoutText(){ return PANELS.map(p=>{ const P=PP(p); return `${p.n}\t${P.face}\t${P.t.toFixed(2)}\t${FACES[P.face].name}`; }).join('\n'); }
+
 function sidebar(clash){
+  if($('resetBtn')) $('resetBtn').hidden=!S.edit||!Object.keys(S.pos).length;
   const area=PANELS.length*S.w*S.h/1e4;
   $('pfacts').innerHTML=`<div class="fact"><b>${PANELS.length}</b><span>panela</span></div><div class="fact"><b>${fmt1(area)} m²</b><span>površina tiska</span></div>`;
   $('pnote').innerHTML=clash.size?`<span class="warn">Uz širinu ${S.w} cm preklapaju se paneli ${[...clash].join(', ')}.</span>`:`Grafike su 2835 × 5103 px (omjer 1 : 1,8), npr. 100 × 180 cm.`;
@@ -293,6 +378,10 @@ $('fExt').checked=S.floor.ext; $('fExt').onchange=e=>{ S.floor.ext=e.target.chec
 const setView=v=>{ S.view=v; $('vPanels').setAttribute('aria-pressed',v==='panels'); $('vDims').setAttribute('aria-pressed',v==='dims'); hide(); save(); draw(); };
 $('vPanels').onclick=()=>setView('panels'); $('vDims').onclick=()=>setView('dims');
 if(matchMedia('(max-width:760px)').matches) document.querySelectorAll('details.sec').forEach(d=>d.open=false);
+$('editBtn').onclick=()=>{ setEdit(!S.edit); if(S.edit&&S.view==='dims') setView('panels'); };
+$('copyBtn').onclick=async()=>{ const t=layoutText(); try{ await navigator.clipboard.writeText(t); }catch(e){ const a=document.createElement('textarea'); a.value=t; document.body.appendChild(a); a.select(); document.execCommand('copy'); a.remove(); } const b=$('copyBtn'); b.textContent='Kopirano ✓'; setTimeout(()=>b.textContent='Kopiraj raspored',1600); };
+$('resetBtn').onclick=()=>{ if(!confirm('Vratiti sve panele na izvorni raspored?')) return; S.pos={}; save(); draw(); };
+setEdit(!!S.edit);
 setView(S.view==='dims'?'dims':'panels');
 </script>
 </body>
