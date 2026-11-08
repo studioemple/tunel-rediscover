@@ -163,7 +163,7 @@ const FACES={
 const PANELS=[
   {n:1, face:'F1',t:1.30,year:'2014',title:'Back to Zadar. Rentlio begins.'},
   {n:2, face:'F1',t:3.51,year:'2014',title:'Marko and Ivan join the forces.'},
-  {n:3, face:'F2',t:3.31,year:'2015',title:'First app. First recognition.'},
+  {n:3, face:'F2',t:3.18,year:'2015',title:'First app. First recognition.'},
   {n:4, face:'F3',t:1.12,year:'2016',title:'Small team. Bigger ambitions.'},
   {n:5, face:'F4',t:4.52,year:'2017',title:'Rentlio opens its doors to other apps.'},
   {n:6, face:'F3',t:3.44,year:'2018',title:'From Zadar to the Booking.com stage'},
@@ -194,6 +194,7 @@ const el=(tag,attrs={},parent)=>{ const e=document.createElementNS(NS,tag); for(
 const FLOOR_DEFAULT={on:true,y0:2014,y1:2026,sw:70,sd:25,dw:8,pad:30,start:2.5,end:1.8,corner:1.0,ext:true,pos:[2.70,5.10,7.50,9.90,12.30,14.70,17.10,19.515,21.93,24.33,26.73,29.13,31.485]};
 let S={w:100,h:180,view:'panels',floor:{...FLOOR_DEFAULT},pos:{},edit:false};
 try{ const s=JSON.parse(localStorage.getItem('rediscover-tunel-final-v4')||'null'); if(s){ S={...S,...s,floor:{...FLOOR_DEFAULT,...(s.floor||{})},pos:s.pos||{}}; } }catch(e){}
+PANELS.forEach(p=>{ const q=S.pos[p.n]; if(q&&q.face===p.face&&Math.abs(q.t-p.t)<0.005) delete S.pos[p.n]; });
 const save=()=>{ try{ localStorage.setItem('rediscover-tunel-final-v4',JSON.stringify(S)); }catch(e){} };
 
 // ---------- floor stickers along the centre line
