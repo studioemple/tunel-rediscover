@@ -276,7 +276,7 @@ function drawDims(){
   // centre line of the walk
   el('polyline',{points:FLOORPATH.map(p=>p.join(',')).join(' '),fill:'none',stroke:'rgba(168,206,58,.55)','stroke-width':'0.035','stroke-dasharray':'0.15 0.1'},g);
 }
-function show(p,ev){ pop.querySelector('img').src=IMG[p.n]; pop.querySelector('b').textContent=`${p.n} · ${p.year}`; pop.querySelector('span').textContent=`${p.title} — ${FACES[p.face].name}`; pop.classList.add('on'); place(ev.clientX,ev.clientY); }
+function show(p,ev){ if(S.edit) return; pop.querySelector('img').src=IMG[p.n]; pop.querySelector('b').textContent=`${p.n} · ${p.year}`; pop.querySelector('span').textContent=`${p.title} — ${FACES[p.face].name}`; pop.classList.add('on'); place(ev.clientX,ev.clientY); }
 function hide(){ pop.classList.remove('on'); }
 document.addEventListener('click',()=>{ if(pop.classList.contains('sheet')){ hide(); setTimeout(()=>pop.classList.remove('sheet'),150); } });
 function place(x,y){ if(pop.classList.contains('sheet')) return; const w=pop.offsetWidth, h=pop.offsetHeight||520, m=16; let L=x+m, T=y-h/2; if(L+w>innerWidth-8) L=x-w-m; T=Math.max(8,Math.min(innerHeight-h-8,T)); pop.style.left=L+'px'; pop.style.top=T+'px'; }
@@ -351,7 +351,7 @@ function tip(p){
   const d=$('dragtip'); d.innerHTML=`<b>${p.n}</b> · ${f.name}<br>sredina ${fmt(P.t)} m od početka zida<br><span>${part(gl,before,'do početka zida')} · ${part(gr,after,'do kraja zida')}</span>`;
   d.style.left=Math.min(innerWidth-d.offsetWidth-8,dragging.x+18)+'px'; d.style.top=Math.max(8,dragging.y-d.offsetHeight-14)+'px'; d.classList.add('on');
 }
-function setEdit(on){ S.edit=on; const b=$('editBtn'); b.classList.toggle('on',on); b.setAttribute('aria-pressed',on);
+function setEdit(on){ S.edit=on; if(on) hide(); const b=$('editBtn'); b.classList.toggle('on',on); b.setAttribute('aria-pressed',on);
   b.innerHTML=on?'🔓 Pomicanje uključeno · Zaključaj':'🔒 Raspored zaključan · Otključaj';
   $('copyBtn').hidden=!on; $('hint').hidden=!on; $('resetBtn').hidden=!on||!Object.keys(S.pos).length; document.body.classList.toggle('edit',on); save(); }
 function layoutText(){ return PANELS.map(p=>{ const P=PP(p); return `${p.n}\t${P.face}\t${P.t.toFixed(2)}\t${FACES[P.face].name}`; }).join('\n'); }
