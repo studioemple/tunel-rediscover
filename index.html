@@ -35,6 +35,13 @@ section h2{margin:0 0 8px;font-size:12px;font-weight:600;letter-spacing:.12em;te
 input:focus-visible{outline:2px solid var(--accent-2);outline-offset:2px}
 .facts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .fact{background:var(--surface);border-radius:10px;padding:8px 10px}
+.wallruns{display:grid;gap:8px}
+.wr{background:var(--surface);border-radius:10px;padding:8px 10px;font-size:13px;line-height:1.45}
+.wr b{display:block;font-size:12.5px;color:var(--muted);font-weight:600;margin-bottom:3px}
+.wr .seq{display:flex;flex-wrap:wrap;gap:3px 5px;align-items:center}
+.wr .pn{background:#A8CE3A;color:#0F3152;border-radius:6px;padding:0 6px;font-weight:700;font-size:12.5px}
+.wr .gp{color:#EAF2F8;font-variant-numeric:tabular-nums}
+.wr .gp.bad{color:#FF6B6B;font-weight:700}
 .fact b{display:block;font-size:20px;line-height:1.15;font-variant-numeric:tabular-nums}
 .fact span{font-size:12px;color:var(--muted)}
 .note{font-size:13px;color:var(--muted);margin:8px 0 0}
@@ -125,6 +132,11 @@ svg text{font-family:var(--cond)}
     <summary>Tunel</summary>
     <div class="facts" id="tfacts"></div>
     <p class="note">Kote su s tlocrta; one sa ≈ izmjerene su s crteža, ±10 cm. Prije narudžbe provjeriti na licu mjesta.</p>
+  </details>
+  <details open class="sec">
+    <summary>Paneli po zidovima</summary>
+    <div id="wallruns" class="wallruns"></div>
+    <p class="note">Razmaci u cm: od kuta zida do ruba panela i između rubova panela. U prikazu „Dimenzije tunela“ isti razmaci su kotirani zeleno uz svaki zid.</p>
   </details>
 </aside>
 <div class="plan-wrap">
@@ -240,12 +252,44 @@ function draw(){
   // panels
   const clash=clashes();
   panelLayer=el('g',{id:'panels'},plan);
-  if(!dims) drawPanels();
+  drawPanels();
+  if(dims) drawPanelDims();
   // scale bar
   const sb=el('g',{stroke:'#93AECA','stroke-width':'0.03'},plan); el('line',{x1:5.6,y1:14.85,x2:7.6,y2:14.85},sb); [5.6,6.6,7.6].forEach(x=>el('line',{x1:x,y1:14.77,x2:x,y2:14.93},sb));
   const st=el('text',{x:6.6,y:14.7,'text-anchor':'middle','font-size':'0.2',fill:'#93AECA'},plan); st.textContent='2 m';
   sidebar(clash);
 }
+// lanac kota uz svaki zid: razmaci od kuta zida do panela i između panela (cm)
+function wallRuns(){
+  const W=S.w/100, out=[];
+  for(const k in FACES){ const f=FACES[k], L=len(sub(f.b,f.a));
+    const ps=PANELS.filter(p=>PP(p).face===k).map(p=>({n:p.n,t:PP(p).t})).sort((a,b)=>a.t-b.t);
+    if(!ps.length) continue;
+    const gaps=[]; let prev=0;
+    ps.forEach(p=>{ gaps.push(p.t-W/2-prev); prev=p.t+W/2; }); gaps.push(L-prev);
+    out.push({k,f,L,ps,gaps}); }
+  return out;
+}
+function drawPanelDims(){
+  const g=el('g',{},plan), C='#A8CE3A', W=S.w/100, O=0.9;
+  const pt=(f,t)=>add(add(f.a,mul(f.e,t)),mul(f.n,O));
+  const tk=(p,f)=>el('line',{x1:p[0]-f.n[0]*0.09,y1:p[1]-f.n[1]*0.09,x2:p[0]+f.n[0]*0.09,y2:p[1]+f.n[1]*0.09,stroke:C,'stroke-width':'0.02'},g);
+  const lab=(a,b,txt,muted)=>{ const m=mul(add(a,b),0.5), d=sub(b,a); let deg=Math.atan2(d[1],d[0])*180/Math.PI; if(deg>90) deg-=180; if(deg<=-90) deg+=180;
+    const tg=el('g',{transform:`translate(${m[0]} ${m[1]}) rotate(${deg})`},g);
+    const fs=muted?0.17:0.23;
+    el('rect',{x:-0.06-txt.length*fs*0.3,y:-fs*0.75,width:0.12+txt.length*fs*0.6,height:fs*1.25,rx:0.05,fill:'#0A2239'},tg);
+    const t=el('text',{x:0,y:fs*0.33,'text-anchor':'middle','font-size':String(fs),'font-weight':muted?'500':'700',fill:muted?'#7E9BB8':C},tg); t.textContent=txt; };
+  wallRuns().forEach(({f,L,ps,gaps})=>{
+    const A=pt(f,0), B=pt(f,L);
+    el('line',{x1:A[0],y1:A[1],x2:B[0],y2:B[1],stroke:C,'stroke-width':'0.012',opacity:'.8'},g); tk(A,f); tk(B,f);
+    let prev=0;
+    ps.forEach((p,i)=>{ const a=p.t-W/2, b=p.t+W/2; tk(pt(f,a),f); tk(pt(f,b),f);
+      lab(pt(f,prev),pt(f,a),String(Math.round(gaps[i]*100)),false);
+      lab(pt(f,a),pt(f,b),String(Math.round(W*100)),true); prev=b; });
+    lab(pt(f,prev),pt(f,L),String(Math.round(gaps[gaps.length-1]*100)),false);
+  });
+}
+
 function drawDims(){
   const g=el('g',{},plan), C='#59C8E7';
   const tick=(p,dir)=>{ const n=[-dir[1],dir[0]]; el('line',{x1:p[0]-n[0]*0.12,y1:p[1]-n[1]*0.12,x2:p[0]+n[0]*0.12,y2:p[1]+n[1]*0.12,stroke:C,'stroke-width':'0.025'},g); };
@@ -360,7 +404,8 @@ function layoutText(){ return PANELS.map(p=>{ const P=PP(p); return `${p.n}\t${P
 function sidebar(clash){
   if($('resetBtn')) $('resetBtn').hidden=!S.edit||!Object.keys(S.pos).length;
   const area=PANELS.length*S.w*S.h/1e4;
-  $('pfacts').innerHTML=`<div class="fact"><b>${PANELS.length}</b><span>panela</span></div><div class="fact"><b>${fmt1(area)} m²</b><span>površina tiska</span></div>`;
+  $('wallruns').innerHTML=wallRuns().map(({f,L,ps,gaps})=>`<div class="wr"><b>${f.name} · ${fmt(L)} m</b><div class="seq"><span class="gp">kut</span>${ps.map((p,i)=>`<span class="gp${gaps[i]<0?' bad':''}">${Math.round(gaps[i]*100)}</span><span class="pn">${p.n}</span>`).join('')}<span class="gp${gaps[gaps.length-1]<0?' bad':''}">${Math.round(gaps[gaps.length-1]*100)}</span><span class="gp">kut</span></div></div>`).join('');
+  $('pfacts').innerHTML=`<div class="fact"><b>${S.w} × ${S.h} cm</b><span>svaki panel</span></div><div class="fact"><b>${PANELS.length}</b><span>panela</span></div><div class="fact"><b>${fmt1(area)} m²</b><span>površina tiska</span></div>`;
   $('pnote').innerHTML=clash.size?`<span class="warn">Uz širinu ${S.w} cm preklapaju se paneli ${[...clash].join(', ')}.</span>`:`Grafike su 2835 × 5103 px (omjer 1 : 1,8), npr. 100 × 180 cm.`;
   { const T=floorLayout().T; $('tfacts').innerHTML=`<div class="fact"><b>14,19 × 7,63 m</b><span>vanjske mjere</span></div><div class="fact"><b>${fmt1(T)} m</b><span>put po sredini</span></div><div class="fact"><b>2,06–2,8 m</b><span>širina hodnika</span></div><div class="fact"><b>2,5 m</b><span>izlaz</span></div>`; }
   const F=S.floor;
