@@ -56,6 +56,8 @@ svg text{font-family:var(--cond)}
 #panels.focus .pnl.hl,#panels.focus .pnl.nb{opacity:1}
 #panels .pnl.hl polygon{filter:drop-shadow(0 0 .08px #A8CE3A)}
 .pdims{opacity:0;transition:opacity .15s;pointer-events:none}
+.gz{fill:transparent;cursor:help}
+.gz.on{fill:rgba(168,206,58,.10)}
 .pdims.on{opacity:1}
 .pnl:focus{outline:none}
 .pnl:focus-visible circle{stroke:#fff;stroke-width:.05}
@@ -84,7 +86,7 @@ svg text{font-family:var(--cond)}
 <body>
 <header>
   <h1>Rediscover tunel · finalni raspored panela</h1>
-  <p>Finalni raspored · 20 panela 100 × 180 cm. Prijeđite mišem ili dodirnite panel za pregled i razmake.</p>
+  <p>Finalni raspored · 20 panela 100 × 180 cm. Prijeđite mišem preko panela ili zida između panela za mjere.</p>
 </header>
 <div class="app">
 <aside>
@@ -222,7 +224,7 @@ function draw(){
   // panels
   const clash=clashes();
   panelLayer=el('g',{id:'panels'},plan);
-  if(!dims) drawPanels();
+  drawPanels(); drawGapZones();
   // scale bar
   const sb=el('g',{stroke:'#93AECA','stroke-width':'0.03'},plan); el('line',{x1:5.6,y1:14.85,x2:7.6,y2:14.85},sb); [5.6,6.6,7.6].forEach(x=>el('line',{x1:x,y1:14.77,x2:x,y2:14.93},sb));
   const st=el('text',{x:6.6,y:14.7,'text-anchor':'middle','font-size':'0.2',fill:'#93AECA'},plan); st.textContent='2 m';
@@ -259,53 +261,77 @@ function drawDims(){
   // centre line of the walk
   el('polyline',{points:FLOORPATH.map(p=>p.join(',')).join(' '),fill:'none',stroke:'rgba(168,206,58,.55)','stroke-width':'0.035','stroke-dasharray':'0.15 0.1'},g);
 }
-function show(p,ev){ curP=p; showPanelDims(p); pop.querySelector('img').src=IMG[p.n]; pop.querySelector('b').textContent=`${p.n} · ${p.year}`; pop.querySelector('span').textContent=`${p.title} — ${FACES[p.face].name}`; pop.classList.add('on'); place(ev.clientX,ev.clientY); }
+function show(p,ev){ curP=p; showPanelDims(p); if(S.view==='dims') return; pop.querySelector('img').src=IMG[p.n]; pop.querySelector('b').textContent=`${p.n} · ${p.year}`; pop.querySelector('span').textContent=`${p.title} — ${FACES[p.face].name}`; pop.classList.add('on'); place(ev.clientX,ev.clientY); }
 function hide(){ pop.classList.remove('on'); clearPanelDims(); }
-document.addEventListener('click',()=>{ if(pop.classList.contains('sheet')){ hide(); setTimeout(()=>pop.classList.remove('sheet'),150); } });
+document.addEventListener('click',()=>{ if(pop.classList.contains('sheet')){ hide(); setTimeout(()=>pop.classList.remove('sheet'),150); } else if(dimLayer) clearPanelDims(); });
 function place(x,y){ if(pop.classList.contains('sheet')) return; const w=pop.offsetWidth, h=pop.offsetHeight||520, m=16; let L=x+m, T=y-h/2; if(L+w>innerWidth-8) L=x-w-m;
   if(panelLayer&&curP){ const r=panelLayer.getBoundingClientRect(), right=x>r.left+r.width/2; if(right&&r.left-w-28>=8) L=r.left-w-28; else if(!right&&r.right+28+w<=innerWidth-8) L=r.right+28; } T=Math.max(8,Math.min(innerHeight-h-8,T)); pop.style.left=L+'px'; pop.style.top=T+'px'; }
 
-// ---------- hover: kote oko panela
+// ---------- hover: kote (panel ili razmak) uz zid
 let curP=null, dimLayer=null;
-function clearPanelDims(){ curP=null; if(dimLayer){ const d=dimLayer; d.classList.remove('on'); setTimeout(()=>{ if(d!==dimLayer||!curP) d.remove(); if(d===dimLayer&&!curP) dimLayer=null; },160); } panelLayer&&panelLayer.classList.remove('focus'); panelLayer&&panelLayer.querySelectorAll('.pnl.hl,.pnl.nb').forEach(e=>e.classList.remove('hl','nb')); }
-function showPanelDims(p){
-  if(!panelLayer||S.view==='dims') return;
+function clearPanelDims(){ curP=null;
+  if(dimLayer){ const d=dimLayer; dimLayer=null; d.classList.remove('on'); setTimeout(()=>d.remove(),160); }
+  if(panelLayer){ panelLayer.classList.remove('focus'); panelLayer.querySelectorAll('.pnl.hl,.pnl.nb').forEach(e=>e.classList.remove('hl','nb')); }
+  plan.querySelectorAll('.gz.on').forEach(z=>z.classList.remove('on')); }
+// redoslijed rubova na zidu: kut, paneli, kut
+function wallEdges(k){ const f=FACES[k], W=S.w/100;
+  const ps=PANELS.filter(p=>PP(p).face===k).sort((a,b)=>PP(a).t-PP(b).t);
+  const segs=[]; let prev={t:0,who:null};
+  ps.forEach(p=>{ const t=PP(p).t; segs.push({lo:prev.t,hi:t-W/2,left:prev.who,right:p}); prev={t:t+W/2,who:p}; });
+  segs.push({lo:prev.t,hi:f.L,left:prev.who,right:null});
+  return segs; }
+// crta lanac kota: points = rubovi (t), parts = [{t0,t1,txt,main}], ends = [{t,dir,txt}]
+function chain(f,points,parts,ends,corners){
   if(dimLayer) dimLayer.remove();
-  const P=PP(p), f=FACES[P.face], W=S.w/100, L=f.L, C='#A8CE3A';
-  const same=PANELS.filter(q=>q!==p&&PP(q).face===P.face).sort((a,b)=>PP(a).t-PP(b).t);
-  const bef=same.filter(q=>PP(q).t<P.t).pop(), aft=same.find(q=>PP(q).t>P.t);
-  const a=P.t-W/2, b=P.t+W/2, lo=bef?PP(bef).t+W/2:0, hi=aft?PP(aft).t-W/2:L;
-  const O=0.8, at=(t,o)=>add(add(f.a,mul(f.e,t)),mul(f.n,o));
+  const C='#A8CE3A', O=0.8, at=(t,o)=>add(add(f.a,mul(f.e,t)),mul(f.n,o));
   const g=el('g',{class:'pdims'},plan); dimLayer=g;
-  // naglasak panela i susjeda
-  const nodes=panelLayer.querySelectorAll('.pnl'); panelLayer.classList.add('focus');
-  nodes[PANELS.indexOf(p)].classList.add('hl'); if(bef) nodes[PANELS.indexOf(bef)].classList.add('nb'); if(aft) nodes[PANELS.indexOf(aft)].classList.add('nb');
-  // pomoćne linije od zida do kotne linije
-  [[lo,!bef],[a,false],[b,false],[hi,!aft]].forEach(([t,corner])=>{ const s0=at(t,corner?0.02:0.16), s1=at(t,O+0.12);
+  points.forEach(t=>{ const corner=corners.includes(t), s0=at(t,corner?0.02:0.16), s1=at(t,O+0.12);
     el('line',{x1:s0[0],y1:s0[1],x2:s1[0],y2:s1[1],stroke:C,'stroke-width':'0.012',opacity:'.75','stroke-dasharray':corner?'0.05 0.04':'none'},g); });
-  // kotna linija + kose crtice
-  const A=at(lo,O), B=at(hi,O); el('line',{x1:A[0],y1:A[1],x2:B[0],y2:B[1],stroke:C,'stroke-width':'0.016'},g);
+  const A=at(Math.min(...points),O), B=at(Math.max(...points),O); el('line',{x1:A[0],y1:A[1],x2:B[0],y2:B[1],stroke:C,'stroke-width':'0.016'},g);
   const dg=[(f.e[0]+f.n[0])*0.08,(f.e[1]+f.n[1])*0.08];
-  [lo,a,b,hi].forEach(t=>{ const q=at(t,O); el('line',{x1:q[0]-dg[0],y1:q[1]-dg[1],x2:q[0]+dg[0],y2:q[1]+dg[1],stroke:C,'stroke-width':'0.03','stroke-linecap':'round'},g); });
-  // oznake: širina panela u sredini, razmaci lijevo/desno; ako razmak nije dovoljno dug, oznaka ide izvan lanca
-  let deg=Math.atan2(f.e[1],f.e[0])*180/Math.PI, flip=false; if(deg>90){ deg-=180; flip=true; } if(deg<=-90){ deg+=180; flip=true; }
-  const put=(t,o,draw)=>{ const m=at(t,o); draw(el('g',{transform:`translate(${m[0]} ${m[1]}) rotate(${deg})`},g)); };
-  const pillW=(txt,fs)=>0.2+txt.length*fs*0.56;
-  const pill=(t,txt,main)=>{ const fs=main?0.24:0.22, w=pillW(txt,fs); put(t,O,tg=>{
+  points.forEach(t=>{ const q=at(t,O); el('line',{x1:q[0]-dg[0],y1:q[1]-dg[1],x2:q[0]+dg[0],y2:q[1]+dg[1],stroke:C,'stroke-width':'0.03','stroke-linecap':'round'},g); });
+  let deg=Math.atan2(f.e[1],f.e[0])*180/Math.PI; if(deg>90) deg-=180; if(deg<=-90) deg+=180;
+  const put=(t,draw)=>{ const m=at(t,O); draw(el('g',{transform:`translate(${m[0]} ${m[1]}) rotate(${deg})`},g)); };
+  const pw=(txt,fs)=>0.2+txt.length*fs*0.56;
+  const pill=(t,txt,main)=>{ const fs=main?0.24:0.22, w=pw(txt,fs); put(t,tg=>{
     el('rect',{x:-w/2,y:-fs*0.8,width:w,height:fs*1.6,rx:fs*0.8,fill:main?C:'#0F3152',stroke:C,'stroke-width':'0.014'},tg);
     const tt=el('text',{x:0,y:fs*0.34,'text-anchor':'middle','font-size':String(fs),'font-weight':'700',fill:main?'#0F3152':'#EAF2F8'},tg); tt.textContent=txt; }); };
-  const tag=(t,txt)=>put(t,O,tg=>{ const tt=el('text',{x:0,y:0.06,'text-anchor':'middle','font-size':'0.17','font-weight':'600',fill:'#93AECA'},tg); tt.textContent=txt; });
-  const cm=v=>`${Math.round(v*100)} cm`;
-  pill((a+b)/2,cm(W),true);
-  // dir -1 = prema lo, +1 = prema hi
-  [[lo,a,-1,bef],[b,hi,1,aft]].forEach(([t0,t1,dir,nb])=>{
-    const txt=cm(t1-t0), w=pillW(txt,0.22), end=dir<0?t0:t1; let cur=end;
-    if(t1-t0>=w+0.08) pill((t0+t1)/2,txt);
-    else { pill(end+dir*(w/2+0.08),txt); cur=end+dir*(w+0.08); }
-    const lab=nb?`panel ${nb.n}`:'kut zida', lw=lab.length*0.17*0.52;
-    tag(cur+dir*(lw/2+0.1),lab);
-  });
+  const tag=(t,txt)=>put(t,tg=>{ const tt=el('text',{x:0,y:0.06,'text-anchor':'middle','font-size':'0.17','font-weight':'600',fill:'#93AECA'},tg); tt.textContent=txt; });
+  const lo=Math.min(...points), hi=Math.max(...points), out={'-1':lo,'1':hi};
+  parts.forEach(({t0,t1,txt,main,side})=>{ const w=pw(txt,main?0.24:0.22);
+    if(t1-t0>=w+0.08||!side) pill((t0+t1)/2,txt,main);
+    else { const e=out[side]; pill(e+side*(w/2+0.08),txt,main); out[side]=e+side*(w+0.08); } });
+  ends.forEach(({dir,txt})=>{ const lw=txt.length*0.17*0.52; tag(out[dir]+dir*(lw/2+0.1),txt); });
   requestAnimationFrame(()=>g.classList.add('on'));
+}
+const cmTxt=v=>`${Math.round(v*100)} cm`, whoTxt=p=>p?`panel ${p.n}`:'kut zida';
+function showPanelDims(p){
+  if(!panelLayer) return;
+  const P=PP(p), f=FACES[P.face], W=S.w/100, segs=wallEdges(P.face);
+  const L=segs.find(s=>s.right===p), R=segs.find(s=>s.left===p), a=P.t-W/2, b=P.t+W/2;
+  const nodes=panelLayer.querySelectorAll('.pnl'); panelLayer.classList.add('focus');
+  nodes[PANELS.indexOf(p)].classList.add('hl'); if(L.left) nodes[PANELS.indexOf(L.left)].classList.add('nb'); if(R.right) nodes[PANELS.indexOf(R.right)].classList.add('nb');
+  chain(f,[L.lo,a,b,R.hi],[{t0:a,t1:b,txt:cmTxt(W),main:true},{t0:L.lo,t1:a,txt:cmTxt(a-L.lo),side:-1},{t0:b,t1:R.hi,txt:cmTxt(R.hi-b),side:1}],
+    [{dir:-1,txt:whoTxt(L.left)},{dir:1,txt:whoTxt(R.right)}],[...(L.left?[]:[L.lo]),...(R.right?[]:[R.hi])]);
+}
+function showGapDims(k,sg,zone){
+  const f=FACES[k]; curP=null;
+  if(panelLayer){ const nodes=panelLayer.querySelectorAll('.pnl'); panelLayer.classList.add('focus'); [sg.left,sg.right].forEach(q=>q&&nodes[PANELS.indexOf(q)].classList.add('nb')); }
+  zone.classList.add('on');
+  chain(f,[sg.lo,sg.hi],[{t0:sg.lo,t1:sg.hi,txt:cmTxt(sg.hi-sg.lo),main:true,side:1}],[{dir:-1,txt:whoTxt(sg.left)},{dir:1,txt:whoTxt(sg.right)}],[...(sg.left?[]:[sg.lo]),...(sg.right?[]:[sg.hi])]);
+}
+// nevidljive zone uz zid između panela (i do kutova): hover pokaže taj razmak
+function drawGapZones(){
+  const g=el('g',{class:'gzones'},plan);
+  for(const k in FACES){ const f=FACES[k]; if(!PANELS.some(p=>PP(p).face===k)) continue;
+    wallEdges(k).forEach(sg=>{ if(sg.hi-sg.lo<0.02) return;
+      const q=(t,o)=>add(add(f.a,mul(f.e,t)),mul(f.n,o));
+      const z=el('polygon',{class:'gz',points:[q(sg.lo,0),q(sg.hi,0),q(sg.hi,0.5),q(sg.lo,0.5)].map(v=>v.join(',')).join(' ')},g);
+      z.addEventListener('pointerenter',()=>showGapDims(k,sg,z));
+      z.addEventListener('pointerleave',()=>clearPanelDims());
+      z.addEventListener('click',ev=>{ ev.stopPropagation(); showGapDims(k,sg,z); });
+    }); }
+  plan.appendChild(panelLayer);   // paneli iznad zona
 }
 
 // ---------- panels (draggable along walls)
